@@ -344,6 +344,16 @@
   direction: rtl;
 }
 
+.grouped-chat-list {
+  min-height: 10px;
+  padding-left: 10px;
+  margin-bottom: 10px;
+
+  &[data-is-dragging-over="true"] {
+    background-color: var(--hover-color);
+  }
+}
+
 .chat-group {
   margin-top: 10px;
 }

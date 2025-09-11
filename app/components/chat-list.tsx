@@ -113,14 +113,12 @@ export function ChatList(props: { narrow?: boolean }) {
     groups,
     currentSessionIndex,
     selectSession,
-    moveSession,
     deleteSession,
     renameGroup,
     deleteGroup,
     toggleGroup,
     updateSessionGroupId,
   } = useChatStore();
-  const chatStore = useChatStore();
   const navigate = useNavigate();
   const isMobileScreen = useMobileScreen();
 
@@ -135,21 +133,7 @@ export function ChatList(props: { narrow?: boolean }) {
     const sourceGroupId = source.droppableId;
     const destGroupId = destination.droppableId;
 
-    if (sourceGroupId === destGroupId) {
-      // move in the same group
-      const groupSessions = sessions.filter(
-        (s) => (s.groupId ?? "ungrouped") === sourceGroupId,
-      );
-      const sourceIndex = groupSessions.findIndex((s) => s.id === draggableId);
-      const destIndex = destination.index;
-      const sourceSession = groupSessions[sourceIndex];
-
-      const globalSourceIndex = sessions.indexOf(sourceSession);
-      const globalDestIndex = sessions.indexOf(groupSessions[destIndex]);
-
-      moveSession(globalSourceIndex, globalDestIndex);
-    } else {
-      // move to another group
+    if (sourceGroupId !== destGroupId) {
       updateSessionGroupId(
         draggableId,
         destGroupId === "ungrouped" ? undefined : destGroupId,
@@ -248,15 +232,19 @@ export function ChatList(props: { narrow?: boolean }) {
               />
             </div>
           </div>
-          {group.expanded && (
-            <Droppable droppableId={group.id} type="CHAT_LIST">
-              {(provided) => (
-                <div
-                  className={styles["chat-list"]}
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                >
-                  {sessions
+          <Droppable droppableId={group.id} type="CHAT_LIST">
+            {(provided, snapshot) => (
+              <div
+                ref={provided.innerRef}
+                {...provided.droppableProps}
+                className={clsx(
+                  styles["chat-list"],
+                  styles["grouped-chat-list"],
+                )}
+                data-is-dragging-over={snapshot.isDraggingOver}
+              >
+                {group.expanded &&
+                  sessions
                     .filter((s) => s.groupId === group.id)
                     .map((item, i) => (
                       <ChatItem
@@ -284,11 +272,10 @@ export function ChatList(props: { narrow?: boolean }) {
                         groupId={group.id}
                       />
                     ))}
-                  {provided.placeholder}
-                </div>
-              )}
-            </Droppable>
-          )}
+                {provided.placeholder}
+              </div>
+            )}
+          </Droppable>
         </div>
       ))}
     </DragDropContext>
