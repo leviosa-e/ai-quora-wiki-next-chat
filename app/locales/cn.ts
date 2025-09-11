@@ -58,8 +58,10 @@ const cn = {
       RefreshToast: "已发送刷新标题请求",
       Speech: "朗读",
       StopSpeech: "停止",
-    },
-    Commands: {
+      ToggleSidebar: "切换侧边栏",
+      Commands: {},
+      HistoryQuestions: "历史问题",
+      NoQuestions: "暂无提问记录",
       new: "新建聊天",
       newm: "从面具新建聊天",
       next: "下一个聊天",

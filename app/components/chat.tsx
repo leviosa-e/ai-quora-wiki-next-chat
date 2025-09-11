@@ -993,6 +993,17 @@ function _Chat() {
   const session = chatStore.currentSession();
   const config = useAppConfig();
   const fontSize = config.fontSize;
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const userQuestions = useMemo(
+    () =>
+      session.messages
+        .filter((msg) => msg.role === "user")
+        .map((msg) => ({
+          id: msg.id,
+          content: getMessageTextContent(msg),
+        })),
+    [session.messages],
+  );
   const fontFamily = config.fontFamily;
 
   const [showExport, setShowExport] = useState(false);
@@ -1769,6 +1780,37 @@ function _Chat() {
           />
         </div>
         <div className={styles["chat-main"]}>
+          {/* Question History Sidebar */}
+          <div
+            className={clsx(styles["question-sidebar"], {
+              [styles["sidebar-hidden"]]: !isSidebarOpen,
+            })}
+          >
+            <div className={styles["sidebar-header"]}>
+              <h3 className={styles["sidebar-title"]}>
+                {Locale.Chat.Actions.HistoryQuestions}
+              </h3>
+              <IconButton
+                icon={<CloseIcon />}
+                onClick={() => setIsSidebarOpen(false)}
+                className={styles["sidebar-close"]}
+              />
+            </div>
+            <div className={styles["sidebar-body"]}>
+              {userQuestions.length > 0 ? (
+                userQuestions.map((q) => (
+                  <div key={q.id} className={styles["question-item"]}>
+                    {q.content}
+                  </div>
+                ))
+              ) : (
+                <div className={styles["no-questions"]}>
+                  {Locale.Chat.Actions.NoQuestions}
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className={styles["chat-body-container"]}>
             <div
               className={styles["chat-body"]}
