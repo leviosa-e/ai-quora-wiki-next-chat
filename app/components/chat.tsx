@@ -31,6 +31,7 @@ import SettingsIcon from "../icons/chat-settings.svg";
 import DeleteIcon from "../icons/clear.svg";
 import PinIcon from "../icons/pin.svg";
 import ConfirmIcon from "../icons/confirm.svg";
+import LeftArrowIcon from "../icons/left.svg";
 import CloseIcon from "../icons/close.svg";
 import CancelIcon from "../icons/cancel.svg";
 import ImageIcon from "../icons/image.svg";
@@ -1781,6 +1782,19 @@ function _Chat() {
         </div>
         <div className={styles["chat-main"]}>
           {/* Question History Sidebar */}
+          <IconButton
+            icon={
+              isSidebarOpen ? (
+                <LeftArrowIcon />
+              ) : (
+                <LeftArrowIcon style={{ transform: "rotate(180deg)" }} />
+              )
+            }
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className={clsx(styles["question-sidebar-toggle"], {
+              [styles["open"]]: isSidebarOpen,
+            })}
+          />
           <div
             className={clsx(styles["question-sidebar"], {
               [styles["sidebar-hidden"]]: !isSidebarOpen,
@@ -1790,11 +1804,6 @@ function _Chat() {
               <h3 className={styles["sidebar-title"]}>
                 {Locale.Chat.Actions.HistoryQuestions}
               </h3>
-              <IconButton
-                icon={<CloseIcon />}
-                onClick={() => setIsSidebarOpen(false)}
-                className={styles["sidebar-close"]}
-              />
             </div>
             <div className={styles["sidebar-body"]}>
               {userQuestions.length > 0 ? (

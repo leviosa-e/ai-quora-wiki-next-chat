@@ -794,6 +794,7 @@
   display: flex;
   height: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 .chat-body-container {
@@ -816,5 +817,23 @@
     &:hover {
       background-color: var(--hover-color);
     }
+  }
+}
+
+.question-sidebar-toggle {
+  position: absolute;
+  top: 16px;
+  left: 10px;
+  z-index: 11;
+  transition: left 0.3s ease;
+  padding: 4px;
+  border-radius: 8px;
+
+  &:hover {
+    background-color: var(--hover-color);
+  }
+
+  &.open {
+    left: 300px;
   }
 }
