@@ -1,5 +1,4 @@
 import DeleteIcon from "../icons/delete.svg";
-
 import styles from "./home.module.scss";
 import {
   DragDropContext,
@@ -7,18 +6,19 @@ import {
   Draggable,
   OnDragEndResponder,
 } from "@hello-pangea/dnd";
-
 import { useChatStore } from "../store";
-
 import Locale from "../locales";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Path } from "../constant";
 import { MaskAvatar } from "./mask";
 import { Mask } from "../store/mask";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useMemo, useState } from "react";
 import { showConfirm } from "./ui-lib";
 import { useMobileScreen } from "../utils";
 import clsx from "clsx";
+import { IconButton } from "./button";
+import EditIcon from "../icons/edit.svg";
+import LeftArrowIcon from "../icons/left.svg";
 
 export function ChatItem(props: {
   onClick?: () => void;
@@ -31,6 +31,7 @@ export function ChatItem(props: {
   index: number;
   narrow?: boolean;
   mask: Mask;
+  groupId?: string;
 }) {
   const draggableRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -46,11 +47,15 @@ export function ChatItem(props: {
     <Draggable draggableId={`${props.id}`} index={props.index}>
       {(provided) => (
         <div
-          className={clsx(styles["chat-item"], {
-            [styles["chat-item-selected"]]:
-              props.selected &&
-              (currentPath === Path.Chat || currentPath === Path.Home),
-          })}
+          className={clsx(
+            styles["chat-item"],
+            props.groupId && styles["chat-item-grouped"],
+            {
+              [styles["chat-item-selected"]]:
+                props.selected &&
+                (currentPath === Path.Chat || currentPath === Path.Home),
+            },
+          )}
           onClick={props.onClick}
           ref={(ele) => {
             draggableRef.current = ele;
@@ -103,44 +108,70 @@ export function ChatItem(props: {
 }
 
 export function ChatList(props: { narrow?: boolean }) {
-  const [sessions, selectedIndex, selectSession, moveSession] = useChatStore(
-    (state) => [
-      state.sessions,
-      state.currentSessionIndex,
-      state.selectSession,
-      state.moveSession,
-    ],
-  );
+  const {
+    sessions,
+    groups,
+    currentSessionIndex,
+    selectSession,
+    moveSession,
+    deleteSession,
+    renameGroup,
+    deleteGroup,
+    toggleGroup,
+    updateSessionGroupId,
+  } = useChatStore();
   const chatStore = useChatStore();
   const navigate = useNavigate();
   const isMobileScreen = useMobileScreen();
 
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+
   const onDragEnd: OnDragEndResponder = (result) => {
-    const { destination, source } = result;
+    const { destination, source, draggableId } = result;
     if (!destination) {
       return;
     }
 
-    if (
-      destination.droppableId === source.droppableId &&
-      destination.index === source.index
-    ) {
-      return;
-    }
+    const sourceGroupId = source.droppableId;
+    const destGroupId = destination.droppableId;
 
-    moveSession(source.index, destination.index);
+    if (sourceGroupId === destGroupId) {
+      // move in the same group
+      const groupSessions = sessions.filter(
+        (s) => (s.groupId ?? "ungrouped") === sourceGroupId,
+      );
+      const sourceIndex = groupSessions.findIndex((s) => s.id === draggableId);
+      const destIndex = destination.index;
+      const sourceSession = groupSessions[sourceIndex];
+
+      const globalSourceIndex = sessions.indexOf(sourceSession);
+      const globalDestIndex = sessions.indexOf(groupSessions[destIndex]);
+
+      moveSession(globalSourceIndex, globalDestIndex);
+    } else {
+      // move to another group
+      updateSessionGroupId(
+        draggableId,
+        destGroupId === "ungrouped" ? undefined : destGroupId,
+      );
+    }
   };
+
+  const ungroupedSessions = useMemo(
+    () => sessions.filter((s) => !s.groupId),
+    [sessions],
+  );
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      <Droppable droppableId="chat-list">
+      <Droppable droppableId="ungrouped" type="CHAT_LIST">
         {(provided) => (
           <div
             className={styles["chat-list"]}
             ref={provided.innerRef}
             {...provided.droppableProps}
           >
-            {sessions.map((item, i) => (
+            {ungroupedSessions.map((item, i) => (
               <ChatItem
                 title={item.topic}
                 time={new Date(item.lastUpdate).toLocaleString()}
@@ -148,17 +179,17 @@ export function ChatList(props: { narrow?: boolean }) {
                 key={item.id}
                 id={item.id}
                 index={i}
-                selected={i === selectedIndex}
+                selected={sessions[currentSessionIndex]?.id === item.id}
                 onClick={() => {
                   navigate(Path.Chat);
-                  selectSession(i);
+                  selectSession(sessions.indexOf(item));
                 }}
                 onDelete={async () => {
                   if (
                     (!props.narrow && !isMobileScreen) ||
                     (await showConfirm(Locale.Home.DeleteChat))
                   ) {
-                    chatStore.deleteSession(i);
+                    deleteSession(sessions.indexOf(item));
                   }
                 }}
                 narrow={props.narrow}
@@ -169,6 +200,97 @@ export function ChatList(props: { narrow?: boolean }) {
           </div>
         )}
       </Droppable>
+      {groups.map((group) => (
+        <div key={group.id} className={styles["chat-group"]}>
+          <div
+            className={styles["chat-group-header"]}
+            onClick={() => toggleGroup(group.id)}
+          >
+            <div className={styles["chat-group-title"]}>
+              <IconButton
+                icon={<LeftArrowIcon style={{ transform: "rotate(90deg)" }} />}
+                className={clsx(
+                  styles["chat-group-expand"],
+                  group.expanded && styles["expanded"],
+                )}
+              />
+              {editingGroupId === group.id ? (
+                <input
+                  type="text"
+                  defaultValue={group.name}
+                  onBlur={(e) => {
+                    renameGroup(group.id, e.target.value);
+                    setEditingGroupId(null);
+                  }}
+                  autoFocus
+                  className={styles["chat-group-input"]}
+                />
+              ) : (
+                <span>{group.name}</span>
+              )}
+            </div>
+            <div className={styles["chat-group-actions"]}>
+              <IconButton
+                icon={<EditIcon />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingGroupId(group.id);
+                }}
+              />
+              <IconButton
+                icon={<DeleteIcon />}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (await showConfirm(Locale.Home.DeleteGroup)) {
+                    deleteGroup(group.id);
+                  }
+                }}
+              />
+            </div>
+          </div>
+          {group.expanded && (
+            <Droppable droppableId={group.id} type="CHAT_LIST">
+              {(provided) => (
+                <div
+                  className={styles["chat-list"]}
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                >
+                  {sessions
+                    .filter((s) => s.groupId === group.id)
+                    .map((item, i) => (
+                      <ChatItem
+                        title={item.topic}
+                        time={new Date(item.lastUpdate).toLocaleString()}
+                        count={item.messages.length}
+                        key={item.id}
+                        id={item.id}
+                        index={i}
+                        selected={sessions[currentSessionIndex]?.id === item.id}
+                        onClick={() => {
+                          navigate(Path.Chat);
+                          selectSession(sessions.indexOf(item));
+                        }}
+                        onDelete={async () => {
+                          if (
+                            (!props.narrow && !isMobileScreen) ||
+                            (await showConfirm(Locale.Home.DeleteChat))
+                          ) {
+                            deleteSession(sessions.indexOf(item));
+                          }
+                        }}
+                        narrow={props.narrow}
+                        mask={item.mask}
+                        groupId={group.id}
+                      />
+                    ))}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          )}
+        </div>
+      ))}
     </DragDropContext>
   );
 }

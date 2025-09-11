@@ -7,7 +7,7 @@ import clsx from "clsx";
 export type ButtonType = "primary" | "danger" | null;
 
 export function IconButton(props: {
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent) => void;
   icon?: JSX.Element;
   type?: ButtonType;
   text?: string;

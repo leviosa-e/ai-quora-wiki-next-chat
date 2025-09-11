@@ -155,7 +155,10 @@ const en: LocaleType = {
   },
   Home: {
     NewChat: "New Chat",
+    NewGroup: "New Group",
+    NewGroupInput: "Please input group name",
     DeleteChat: "Confirm to delete the selected conversation?",
+    DeleteGroup: "Confirm to delete this group?",
     DeleteToast: "Chat Deleted",
     Revert: "Revert",
   },

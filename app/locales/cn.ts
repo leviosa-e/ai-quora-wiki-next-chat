@@ -155,7 +155,10 @@ const cn = {
   },
   Home: {
     NewChat: "新的聊天",
+    NewGroup: "新建分组",
+    NewGroupInput: "请输入分组名称",
     DeleteChat: "确认删除选中的对话？",
+    DeleteGroup: "确认删除该分组？",
     DeleteToast: "已删除会话",
     Revert: "撤销",
   },

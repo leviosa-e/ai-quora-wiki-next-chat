@@ -343,3 +343,56 @@
 .rtl-screen {
   direction: rtl;
 }
+
+.chat-group {
+  margin-top: 10px;
+}
+
+.chat-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 10px;
+  cursor: pointer;
+  border-radius: 5px;
+
+  &:hover {
+    background-color: var(--hover-color);
+  }
+}
+
+.chat-group-title {
+  display: flex;
+  align-items: center;
+  font-weight: bold;
+}
+
+.chat-group-expand {
+  transition: transform 0.3s ease;
+  &.expanded {
+    transform: rotate(90deg);
+  }
+}
+
+.chat-group-actions {
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+
+  .chat-group-header:hover & {
+    opacity: 1;
+  }
+}
+
+.chat-item-grouped {
+  margin-left: 20px;
+}
+
+.chat-group-input {
+  border: 1px solid var(--border-in-light);
+  border-radius: 5px;
+  padding: 5px;
+  font-size: 14px;
+  width: 100%;
+}

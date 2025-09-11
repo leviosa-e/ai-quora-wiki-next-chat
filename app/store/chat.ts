@@ -41,6 +41,12 @@ import { extractMcpJson, isMcpJson } from "../mcp/utils";
 
 const localStorage = safeLocalStorage();
 
+export interface ChatGroup {
+  id: string;
+  name: string;
+  expanded: boolean;
+}
+
 export type ChatMessageTool = {
   id: string;
   index?: number;
@@ -84,6 +90,7 @@ export interface ChatStat {
 export interface ChatSession {
   id: string;
   topic: string;
+  groupId?: string;
 
   memoryPrompt: string;
   messages: ChatMessage[];
@@ -227,6 +234,7 @@ const DEFAULT_CHAT_STATE = {
   sessions: [createEmptySession()],
   currentSessionIndex: 0,
   lastInput: "",
+  groups: [] as ChatGroup[],
 };
 
 export const useChatStore = createPersistStore(
@@ -854,13 +862,57 @@ export const useChatStore = createPersistStore(
           }
         }
       },
+
+      createGroup(name: string) {
+        const newGroup: ChatGroup = {
+          id: nanoid(),
+          name,
+          expanded: true,
+        };
+        set((state) => ({
+          groups: [...state.groups, newGroup],
+        }));
+      },
+
+      renameGroup(groupId: string, name: string) {
+        set((state) => ({
+          groups: state.groups.map((g) =>
+            g.id === groupId ? { ...g, name } : g,
+          ),
+        }));
+      },
+
+      deleteGroup(groupId: string) {
+        set((state) => ({
+          groups: state.groups.filter((g) => g.id !== groupId),
+          sessions: state.sessions.map((s) =>
+            s.groupId === groupId ? { ...s, groupId: undefined } : s,
+          ),
+        }));
+      },
+
+      toggleGroup(groupId: string) {
+        set((state) => ({
+          groups: state.groups.map((g) =>
+            g.id === groupId ? { ...g, expanded: !g.expanded } : g,
+          ),
+        }));
+      },
+
+      updateSessionGroupId(sessionId: string, groupId?: string) {
+        set((state) => ({
+          sessions: state.sessions.map((s) =>
+            s.id === sessionId ? { ...s, groupId } : s,
+          ),
+        }));
+      },
     };
 
     return methods;
   },
   {
     name: StoreKey.Chat,
-    version: 3.3,
+    version: 3.4,
     migrate(persistedState, version) {
       const state = persistedState as any;
       const newState = JSON.parse(
@@ -916,6 +968,12 @@ export const useChatStore = createPersistStore(
             config.modelConfig.compressProviderName;
         });
       }
+
+      if (version < 3.4) {
+        (newState as any).groups = [];
+        newState.sessions.forEach((s: any) => (s.groupId = undefined));
+      }
+
       // revert default summarize model for every session
       if (version < 3.3) {
         newState.sessions.forEach((s) => {
