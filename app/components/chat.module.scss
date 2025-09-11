@@ -725,29 +725,96 @@
   color: var(--black);
 }
 
+.question-sidebar {
+  width: 300px;
+  background-color: var(--white);
+  border-right: var(--border-in-light);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  transition: transform 0.3s ease;
+  z-index: 10;
+
+  .sidebar-header {
+    padding: 16px;
+    border-bottom: var(--border-in-light);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    .sidebar-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .sidebar-close {
+      padding: 4px;
+      border-radius: 8px;
+      &:hover {
+        background-color: var(--hover-color);
+      }
+    }
+  }
+
+  .sidebar-body {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+
+    .question-item {
+      padding: 12px;
+      border-radius: 10px;
+      background-color: var(--second);
+      margin-bottom: 10px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+
+      &:hover {
+        background-color: var(--hover-color);
+      }
+    }
+
+    .no-questions {
+      text-align: center;
+      padding: 20px;
+      color: var(--black);
+      font-size: 14px;
+      opacity: 0.6;
+    }
+  }
+}
+
+.sidebar-hidden {
+  transform: translateX(-100%);
+}
+
 .chat-main {
   display: flex;
   height: 100%;
-  width: 100%;
-  position: relative;
   overflow: hidden;
-  .chat-body-container {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    width: 100%;
-  }
-  .chat-side-panel {
-    position: absolute;
-    inset: 0;
-    background: var(--white);
-    overflow: hidden;
-    z-index: 10;
-    transform: translateX(100%);
-    transition: all ease 0.3s;
-    &-show {
-      transform: translateX(0);
+}
+
+.chat-body-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-header {
+  padding: 10px 20px;
+  border-bottom: var(--border-in-light);
+  display: flex;
+  align-items: center;
+
+  .sidebar-toggle-btn {
+    margin-right: 10px;
+    padding: 6px;
+    border-radius: 8px;
+    &:hover {
+      background-color: var(--hover-color);
     }
   }
 }
