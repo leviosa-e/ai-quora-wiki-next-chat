@@ -1504,6 +1504,20 @@ function _Chat() {
   // edit / insert message modal
   const [isEditingMessage, setIsEditingMessage] = useState(false);
 
+  const handleQuestionClick = (questionId: string) => {
+    const messageIndex = renderMessages.findIndex((m) => m.id === questionId);
+    if (messageIndex === -1) return;
+
+    setMsgRenderIndex(messageIndex);
+
+    setTimeout(() => {
+      const element = document.getElementById(`message-${questionId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 300);
+  };
+
   // remember unfinished input
   useEffect(() => {
     // try to load from local storage
@@ -1808,7 +1822,11 @@ function _Chat() {
             <div className={styles["sidebar-body"]}>
               {userQuestions.length > 0 ? (
                 userQuestions.map((q) => (
-                  <div key={q.id} className={styles["question-item"]}>
+                  <div
+                    key={q.id}
+                    className={styles["question-item"]}
+                    onClick={() => handleQuestionClick(q.id)}
+                  >
                     {q.content}
                   </div>
                 ))
@@ -1849,6 +1867,7 @@ function _Chat() {
                   return (
                     <Fragment key={message.id}>
                       <div
+                        id={`message-${message.id}`}
                         className={
                           isUser
                             ? styles["chat-message-user"]
