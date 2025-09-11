@@ -1808,6 +1808,7 @@ function _Chat() {
             className={clsx(styles["question-sidebar-toggle"], {
               [styles["open"]]: isSidebarOpen,
             })}
+            bordered
           />
           <div
             className={clsx(styles["question-sidebar"], {
