@@ -2306,20 +2306,6 @@ function _Chat() {
       {showShortcutKeyModal && (
         <ShortcutKeyModal onClose={() => setShowShortcutKeyModal(false)} />
       )}
-      <TextSelectionToolbar
-        range={null as unknown as Range}
-        text=""
-        onClose={() => {}}
-        // containerRef={scrollRef}
-        onAsk={(text: string) => {
-          setUserInput(`"${text}"`);
-          inputRef.current?.focus();
-        }}
-        // onCopy={(text: string) => {
-        //   copyToClipboard(text);
-        // }}
-        // onHighlight={onHighlight}
-      />
     </>
   );
 }
