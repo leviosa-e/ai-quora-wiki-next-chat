@@ -1,12 +1,12 @@
 import { useDebouncedCallback } from "use-debounce";
 import React, {
-  Fragment,
-  RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
   useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  RefObject,
+  Fragment,
 } from "react";
 
 import SendWhiteIcon from "../icons/send-white.svg";
@@ -125,6 +125,7 @@ import { isEmpty } from "lodash-es";
 import { getModelProvider } from "../utils/model";
 import { RealtimeChat } from "@/app/components/realtime-chat";
 import clsx from "clsx";
+import { TextSelectionToolbar } from "./text-selection-toolbar";
 import { getAvailableClientsCount, isMcpEnabled } from "../mcp/actions";
 
 const localStorage = safeLocalStorage();
@@ -1007,13 +1008,73 @@ function _Chat() {
   );
   const fontFamily = config.fontFamily;
 
-  const [showExport, setShowExport] = useState(false);
+  const [selection, setSelection] = useState<{
+    range: Range;
+    text: string;
+  } | null>(null);
+  const [highlightedText, setHighlightedText] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [userInput, setUserInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { submitKey, shouldSubmit } = useSubmitHandler();
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const [showExport, setShowExport] = useState(false);
+  const [selectedRange, setSelectedRange] = useState<Range | null>(null);
+  const [selectedText, setSelectedText] = useState("");
+  const [showTextSelectionToolbar, setShowTextSelectionToolbar] =
+    useState(false);
+
+  const handleTextSelection = useCallback(() => {
+    const selection = window.getSelection();
+    if (
+      selection &&
+      !selection.isCollapsed &&
+      selection.rangeCount > 0 &&
+      scrollRef.current?.contains(selection.anchorNode)
+    ) {
+      const range = selection.getRangeAt(0);
+      // check if the selection is in a code block
+      let inCode = false;
+      let node = range.startContainer;
+      while (node && node !== scrollRef.current) {
+        if (
+          node.nodeName === "CODE" &&
+          (node as HTMLElement).classList.contains("hljs")
+        ) {
+          inCode = true;
+          break;
+        }
+        if (node.parentNode) {
+          node = node.parentNode;
+        }
+      }
+      if (inCode) {
+        // if in code block, select the whole block
+        const codeBlock = node as HTMLElement;
+        const newRange = document.createRange();
+        newRange.selectNode(codeBlock);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+        setSelectedRange(newRange);
+        setSelectedText(newRange.toString());
+      } else {
+        setSelectedRange(range);
+        setSelectedText(selection.toString());
+      }
+      setShowTextSelectionToolbar(true);
+    } else {
+      setShowTextSelectionToolbar(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener("selectionchange", handleTextSelection);
+    return () => {
+      document.removeEventListener("selectionchange", handleTextSelection);
+    };
+  }, [handleTextSelection]);
   const isScrolledToBottom = scrollRef?.current
     ? Math.abs(
         scrollRef.current.scrollHeight -
@@ -1840,6 +1901,20 @@ function _Chat() {
           </div>
 
           <div className={styles["chat-body-container"]}>
+            {showTextSelectionToolbar && selectedRange && (
+              <TextSelectionToolbar
+                range={selectedRange}
+                text={selectedText}
+                onClose={() => {
+                  setShowTextSelectionToolbar(false);
+                  window.getSelection()?.removeAllRanges();
+                }}
+                onAsk={(text: string) => {
+                  setUserInput(`"${text}"`);
+                  inputRef.current?.focus();
+                }}
+              />
+            )}
             <div
               className={styles["chat-body"]}
               ref={scrollRef}
@@ -2231,6 +2306,20 @@ function _Chat() {
       {showShortcutKeyModal && (
         <ShortcutKeyModal onClose={() => setShowShortcutKeyModal(false)} />
       )}
+      <TextSelectionToolbar
+        range={null as unknown as Range}
+        text=""
+        onClose={() => {}}
+        // containerRef={scrollRef}
+        onAsk={(text: string) => {
+          setUserInput(`"${text}"`);
+          inputRef.current?.focus();
+        }}
+        // onCopy={(text: string) => {
+        //   copyToClipboard(text);
+        // }}
+        // onHighlight={onHighlight}
+      />
     </>
   );
 }
