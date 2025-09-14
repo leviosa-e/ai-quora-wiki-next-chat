@@ -57,7 +57,17 @@ export function TextSelectionToolbar({
   };
 
   const handleHighlight = () => {
-    // onHighlight();
+    if (range) {
+      const span = document.createElement("span");
+      span.style.textDecoration = "underline";
+      span.style.textDecorationStyle = "wavy";
+      span.style.textDecorationColor = "red";
+      try {
+        range.surroundContents(span);
+      } catch (e) {
+        console.error("Failed to highlight text:", e);
+      }
+    }
     onClose();
   };
 
