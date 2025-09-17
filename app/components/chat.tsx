@@ -8,6 +8,7 @@ import React, {
   RefObject,
   Fragment,
 } from "react";
+import { Modal as AntdModal, Input } from "antd";
 
 import SendWhiteIcon from "../icons/send-white.svg";
 import BrainIcon from "../icons/brain.svg";
@@ -1021,10 +1022,17 @@ function _Chat() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [showExport, setShowExport] = useState(false);
+  const [showAskModal, setShowAskModal] = useState(false);
+  const [askInput, setAskInput] = useState("");
   const [selectedRange, setSelectedRange] = useState<Range | null>(null);
   const [selectedText, setSelectedText] = useState("");
   const [showTextSelectionToolbar, setShowTextSelectionToolbar] =
     useState(false);
+
+  const onAsk = useCallback((text: string) => {
+    setAskInput(text);
+    setShowAskModal(true);
+  }, []);
 
   const handleTextSelection = useCallback(() => {
     const selection = window.getSelection();
@@ -1913,6 +1921,7 @@ function _Chat() {
                   setUserInput(`"${text}"`);
                   inputRef.current?.focus();
                 }}
+                setShowAskModal={setShowAskModal}
               />
             )}
             <div
@@ -2305,6 +2314,31 @@ function _Chat() {
 
       {showShortcutKeyModal && (
         <ShortcutKeyModal onClose={() => setShowShortcutKeyModal(false)} />
+      )}
+
+      {showAskModal && (
+        <AntdModal
+          title={Locale.Chat.AskQuestion}
+          open={showAskModal}
+          onOk={() => {
+            setShowAskModal(false);
+            onAsk(askInput);
+          }}
+          onCancel={() => {
+            setShowAskModal(false);
+          }}
+          // destroyOnHidden
+          maskClosable={false}
+        >
+          <Input.TextArea
+            value={askInput}
+            onChange={(e) => setAskInput(e.target.value)}
+            rows={4}
+            placeholder={Locale.Chat.InputPlaceholder}
+            onMouseDown={(e) => e.stopPropagation()}
+            onMouseUp={(e) => e.stopPropagation()}
+          />
+        </AntdModal>
       )}
     </>
   );
