@@ -382,7 +382,7 @@ export function PromptHints(props: {
   );
 }
 
-function ClearContextDivider() {
+export function ClearContextDivider() {
   const chatStore = useChatStore();
   const session = chatStore.currentSession();
 
@@ -1029,11 +1029,6 @@ function _Chat() {
   const [showTextSelectionToolbar, setShowTextSelectionToolbar] =
     useState(false);
 
-  const onAsk = useCallback((text: string) => {
-    setAskInput(text);
-    setShowAskModal(true);
-  }, []);
-
   const handleTextSelection = useCallback(() => {
     const selection = window.getSelection();
     if (
@@ -1203,6 +1198,12 @@ function _Chat() {
     if (!isMobileScreen) inputRef.current?.focus();
     setAutoScroll(true);
   };
+
+  const onAsk = useCallback((text: string) => {
+    setAskInput(text);
+    setShowAskModal(false);
+    doSubmit(text);
+  }, []);
 
   const onPromptSelect = (prompt: RenderPrompt) => {
     setTimeout(() => {
@@ -2271,6 +2272,7 @@ function _Chat() {
                     })}
                   </div>
                 )}
+                {/* 发送按钮 */}
                 <IconButton
                   icon={<SendWhiteIcon />}
                   text={Locale.Chat.Send}

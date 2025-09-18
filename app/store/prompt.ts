@@ -4,13 +4,13 @@ import { StoreKey } from "../constant";
 import { getLang } from "../locales";
 import { createPersistStore } from "../utils/store";
 
-export interface Prompt {
+export type Prompt = {
   id: string;
-  isUser?: boolean;
   title: string;
   content: string;
+  isUser?: boolean;
   createdAt: number;
-}
+};
 
 export const SearchService = {
   ready: false,

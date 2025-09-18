@@ -69,6 +69,7 @@ export type ChatMessage = RequestMessage & {
   tools?: ChatMessageTool[];
   audio_url?: string;
   isMcpResponse?: boolean;
+  preview?: boolean;
 };
 
 export function createMessage(override: Partial<ChatMessage>): ChatMessage {
