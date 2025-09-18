@@ -453,7 +453,7 @@ export function ChatAction(props: {
   );
 }
 
-function useScrollToBottom(
+export function useScrollToBottom(
   scrollRef: RefObject<HTMLDivElement>,
   detach: boolean = false,
   messages: ChatMessage[],
@@ -1078,6 +1078,7 @@ function _Chat() {
       document.removeEventListener("selectionchange", handleTextSelection);
     };
   }, [handleTextSelection]);
+
   const isScrolledToBottom = scrollRef?.current
     ? Math.abs(
         scrollRef.current.scrollHeight -

@@ -1,4 +1,12 @@
-import React, { Fragment, RefObject } from "react";
+import { useDebouncedCallback } from "use-debounce";
+import React, {
+  Fragment,
+  RefObject,
+  useMemo,
+  useRef,
+  useState,
+  useEffect,
+} from "react";
 import { ChatMessage, useAppConfig, useChatStore, ChatSession } from "../store";
 import {
   ChatActions,
@@ -7,6 +15,7 @@ import {
   ClearContextDivider,
   DeleteImageButton,
   RenderPrompt,
+  useScrollToBottom,
 } from "./chat";
 import { Markdown } from "./markdown";
 import { Avatar } from "./emoji";
@@ -26,113 +35,180 @@ import ResetIcon from "../icons/reload.svg";
 import DeleteIcon from "../icons/clear.svg";
 import PinIcon from "../icons/pin.svg";
 import CopyIcon from "../icons/copy.svg";
-import SpeakStopIcon from "../icons/speak-stop.svg";
-import SpeakIcon from "../icons/speak.svg";
+// import SpeakStopIcon from "../icons/speak-stop.svg";
+// import SpeakIcon from "../icons/speak.svg";
 import SendWhiteIcon from "../icons/send-white.svg";
 import ConfirmIcon from "../icons/confirm.svg";
 import LoadingButtonIcon from "../icons/loading.svg";
 import CloseIcon from "../icons/close.svg";
 import { TextSelectionToolbar } from "./text-selection-toolbar";
+import { useChatBodyStore } from "../store/chat-body";
+import { useChatCommand } from "../command";
+import { isEmpty } from "lodash-es";
+import { useMobileScreen } from "../utils";
+// import { createTTSPlayer } from "../utils/audio";
+// import { MsEdgeTTS, OUTPUT_FORMAT } from "../utils/ms_edge_tts";
+import { useNavigate } from "react-router-dom";
 
-// Define props for the ChatBody component
+// const ttsPlayer = createTTSPlayer();
+
+// Define props for the ChatBodyProps interface
 interface ChatBodyProps {
   session: ChatSession;
-  showTextSelectionToolbar: boolean;
-  setShowTextSelectionToolbar: (show: boolean) => void;
-  selectedRange: Range | null;
-  selectedText: string;
-  setUserInput: (input: string) => void;
   inputRef: RefObject<HTMLTextAreaElement>;
   setShowAskModal: (show: boolean) => void;
-  scrollRef: RefObject<HTMLDivElement>;
-  onChatBodyScroll: (e: HTMLDivElement) => void;
-  setAutoScroll: (auto: boolean) => void;
   messages: ChatMessage[];
+  onChatBodyScroll: (e: HTMLDivElement) => void;
   context: ChatMessage[];
   clearContextIndex: number;
   onUserStop: (messageId: string | number) => void;
   onResend: (message: ChatMessage) => void;
   onDelete: (messageId: string | number) => void;
   onPinMessage: (message: ChatMessage) => void;
-  speechStatus: boolean;
-  openaiSpeech: (content: string) => void;
-  isMobileScreen: boolean;
   fontSize: number;
   fontFamily: string;
-  promptHints: RenderPrompt[];
   onPromptSelect: (prompt: RenderPrompt) => void;
   uploadImage: () => void;
-  setAttachImages: (images: string[]) => void;
-  setUploading: (uploading: boolean) => void;
-  setShowPromptModal: (show: boolean) => void;
   scrollToBottom: () => void;
-  hitBottom: boolean;
-  uploading: boolean;
-  onSearch: (text: string) => void;
   setShowShortcutKeyModal: React.Dispatch<React.SetStateAction<boolean>>;
   setShowChatSidePanel: React.Dispatch<React.SetStateAction<boolean>>;
-  attachImages: string[];
   submitKey: string;
   onInput: (text: string) => void;
-  userInput: string;
   onInputKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   handlePaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
   inputRows: number;
   autoFocus: boolean;
-  doSubmit: (input: string) => void;
-  setPromptHints: (hints: RenderPrompt[]) => void;
 }
 
 export function ChatBody(props: ChatBodyProps) {
   const {
     session,
-    showTextSelectionToolbar,
-    setShowTextSelectionToolbar,
-    selectedRange,
-    selectedText,
-    setUserInput,
     inputRef,
     setShowAskModal,
-    scrollRef,
-    onChatBodyScroll,
-    setAutoScroll,
     messages,
+    onChatBodyScroll,
     context,
     clearContextIndex,
     onUserStop,
     onResend,
     onDelete,
     onPinMessage,
-    speechStatus,
-    openaiSpeech,
-    isMobileScreen,
     fontSize,
     fontFamily,
-    promptHints,
     onPromptSelect,
     uploadImage,
-    setAttachImages,
-    setUploading,
-    setShowPromptModal,
     scrollToBottom,
-    hitBottom,
-    uploading,
-    onSearch,
     setShowShortcutKeyModal,
     setShowChatSidePanel,
-    attachImages,
     submitKey,
     onInput,
-    userInput,
     onInputKeyDown,
     handlePaste,
     inputRows,
     autoFocus,
-    doSubmit,
-    setPromptHints,
   } = props;
   const config = useAppConfig();
   const chatStore = useChatStore();
+  const {
+    userInput,
+    promptHints,
+    isLoading,
+    setUserInput,
+    setPromptHints,
+    setIsLoading,
+  } = useChatBodyStore();
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const chatCommands = useChatCommand();
+
+  const isScrolledToBottom = scrollRef?.current
+    ? Math.abs(
+        scrollRef.current.scrollHeight -
+          (scrollRef.current.scrollTop + scrollRef.current.clientHeight),
+      ) <= 1
+    : false;
+
+  const isAttachWithTop = useMemo(() => {
+    const lastMessage = scrollRef.current?.lastElementChild as HTMLElement;
+    // if scrolllRef is not ready or no message, return false
+    if (!scrollRef?.current || !lastMessage) return false;
+    const topDistance =
+      lastMessage!.getBoundingClientRect().top -
+      scrollRef.current.getBoundingClientRect().top;
+    // leave some space for user question
+    return topDistance < 100;
+  }, [scrollRef?.current?.scrollHeight]);
+
+  const isTyping = userInput !== "";
+
+  // if user is typing, should auto scroll to bottom
+  // if user is not typing, should auto scroll to bottom only if already at bottom
+  const { setAutoScroll, scrollDomToBottom } = useScrollToBottom(
+    scrollRef,
+    (isScrolledToBottom || isAttachWithTop) && !isTyping,
+    session.messages,
+  );
+  const [hitBottom, setHitBottom] = useState(true);
+  const isMobileScreen = useMobileScreen();
+  const navigate = useNavigate();
+  const [attachImages, setAttachImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [selectedRange, setSelectedRange] = useState<Range | null>(null);
+  const [selectedText, setSelectedText] = useState("");
+  const [showTextSelectionToolbar, setShowTextSelectionToolbar] =
+    useState(false);
+
+  const handleTextSelection = useDebouncedCallback(() => {
+    const selection = window.getSelection();
+
+    const container = scrollRef.current;
+    if (!container || !selection || selection.rangeCount === 0) {
+      setShowTextSelectionToolbar(false);
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const text = selection.toString();
+
+    if (
+      container.contains(range.commonAncestorContainer) &&
+      text.trim().length > 0
+    ) {
+      setSelectedRange(range.cloneRange());
+      setSelectedText(text);
+      setShowTextSelectionToolbar(true);
+    } else {
+      setShowTextSelectionToolbar(false);
+    }
+  }, 200);
+
+  useEffect(() => {
+    document.addEventListener("selectionchange", handleTextSelection);
+
+    return () => {
+      document.removeEventListener("selectionchange", handleTextSelection);
+    };
+  }, [handleTextSelection]);
+
+  const doSubmit = (input: string) => {
+    if (input.trim() === "" && isEmpty(attachImages)) return;
+    const matchCommand = chatCommands.match(input);
+    if (matchCommand.matched) {
+      setUserInput("");
+      setPromptHints([]);
+      matchCommand.invoke();
+      return;
+    }
+    setIsLoading(true);
+    chatStore.onUserInput(input, attachImages).then(() => setIsLoading(false));
+    setAttachImages([]);
+    chatStore.setLastInput(input);
+    setUserInput("");
+    setPromptHints([]);
+    if (!isMobileScreen) inputRef.current?.focus();
+    setAutoScroll(true);
+  };
 
   return (
     <div className={styles["chat-body-container"]}>
@@ -289,7 +365,7 @@ export function ChatBody(props: ChatBodyProps) {
                                     )
                                   }
                                 />
-                                {config.ttsConfig.enable && (
+                                {/* {config.ttsConfig.enable && (
                                   <ChatAction
                                     text={
                                       speechStatus
@@ -309,7 +385,7 @@ export function ChatBody(props: ChatBodyProps) {
                                       )
                                     }
                                   />
-                                )}
+                                )} */}
                               </>
                             )}
                           </div>
@@ -418,20 +494,17 @@ export function ChatBody(props: ChatBodyProps) {
           uploadImage={uploadImage}
           setAttachImages={setAttachImages}
           setUploading={setUploading}
-          showPromptModal={() => setShowPromptModal(true)}
+          showPromptModal={() => {}}
           scrollToBottom={scrollToBottom}
           hitBottom={hitBottom}
           uploading={uploading}
           showPromptHints={() => {
-            // Click again to close
             if (promptHints.length > 0) {
               setPromptHints([]);
               return;
             }
-
             inputRef.current?.focus();
             setUserInput("/");
-            onSearch("");
           }}
           setShowShortcutKeyModal={setShowShortcutKeyModal}
           setUserInput={setUserInput}
