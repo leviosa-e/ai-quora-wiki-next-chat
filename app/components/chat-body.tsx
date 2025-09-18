@@ -1,13 +1,18 @@
 import { useDebouncedCallback } from "use-debounce";
 import React, {
   Fragment,
-  RefObject,
   useMemo,
   useRef,
   useState,
   useEffect,
+  useCallback,
 } from "react";
-import { ChatMessage, useAppConfig, useChatStore, ChatSession } from "../store";
+import {
+  ChatMessage,
+  useAppConfig,
+  useChatStore,
+  createMessage,
+} from "../store";
 import {
   ChatActions,
   PromptHints,
@@ -16,14 +21,18 @@ import {
   DeleteImageButton,
   RenderPrompt,
   useScrollToBottom,
+  RenderMessage,
+  useSubmitHandler,
 } from "./chat";
+import { CHAT_PAGE_SIZE } from "../constant";
 import { Markdown } from "./markdown";
 import { Avatar } from "./emoji";
 import { MaskAvatar } from "./mask";
 import { IconButton } from "./button";
-import { showPrompt } from "./ui-lib";
+import { showPrompt, showToast } from "./ui-lib";
 import { getMessageImages, getMessageTextContent } from "../utils";
 import { MultimodalContent } from "../client/api";
+import { ChatControllerPool } from "../client/controller";
 import { copyToClipboard } from "../utils";
 import clsx from "clsx";
 import styles from "./chat.module.scss";
@@ -43,81 +52,51 @@ import LoadingButtonIcon from "../icons/loading.svg";
 import CloseIcon from "../icons/close.svg";
 import { TextSelectionToolbar } from "./text-selection-toolbar";
 import { useChatBodyStore } from "../store/chat-body";
-import { useChatCommand } from "../command";
+import { useChatCommand, ChatCommandPrefix } from "../command";
 import { isEmpty } from "lodash-es";
-import { useMobileScreen } from "../utils";
+import { useMobileScreen, isVisionModel } from "../utils";
+import { uploadImage as uploadImageRemote } from "@/app/utils/chat";
 // import { createTTSPlayer } from "../utils/audio";
 // import { MsEdgeTTS, OUTPUT_FORMAT } from "../utils/ms_edge_tts";
 import { useNavigate } from "react-router-dom";
+import { usePromptStore } from "../store/prompt";
 
 // const ttsPlayer = createTTSPlayer();
 
 // Define props for the ChatBodyProps interface
 interface ChatBodyProps {
-  session: ChatSession;
-  inputRef: RefObject<HTMLTextAreaElement>;
-  setShowAskModal: (show: boolean) => void;
   messages: ChatMessage[];
-  onChatBodyScroll: (e: HTMLDivElement) => void;
   context: ChatMessage[];
   clearContextIndex: number;
-  onUserStop: (messageId: string | number) => void;
-  onResend: (message: ChatMessage) => void;
-  onDelete: (messageId: string | number) => void;
-  onPinMessage: (message: ChatMessage) => void;
   fontSize: number;
   fontFamily: string;
-  onPromptSelect: (prompt: RenderPrompt) => void;
-  uploadImage: () => void;
-  scrollToBottom: () => void;
-  setShowShortcutKeyModal: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowChatSidePanel: React.Dispatch<React.SetStateAction<boolean>>;
-  submitKey: string;
-  onInput: (text: string) => void;
-  onInputKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-  handlePaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
   inputRows: number;
   autoFocus: boolean;
 }
 
 export function ChatBody(props: ChatBodyProps) {
   const {
-    session,
-    inputRef,
-    setShowAskModal,
     messages,
-    onChatBodyScroll,
     context,
     clearContextIndex,
-    onUserStop,
-    onResend,
-    onDelete,
-    onPinMessage,
     fontSize,
     fontFamily,
-    onPromptSelect,
-    uploadImage,
-    scrollToBottom,
-    setShowShortcutKeyModal,
-    setShowChatSidePanel,
-    submitKey,
-    onInput,
-    onInputKeyDown,
-    handlePaste,
     inputRows,
     autoFocus,
   } = props;
   const config = useAppConfig();
-  const chatStore = useChatStore();
+  const chatBodyStore = useChatStore();
+  const session = chatBodyStore.currentSession();
   const {
     userInput,
-    promptHints,
+    // promptHints,
     isLoading,
     setUserInput,
-    setPromptHints,
+    // setPromptHints,
     setIsLoading,
   } = useChatBodyStore();
 
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const chatCommands = useChatCommand();
@@ -150,10 +129,182 @@ export function ChatBody(props: ChatBodyProps) {
     session.messages,
   );
   const [hitBottom, setHitBottom] = useState(true);
+  const [showAskModal, setShowAskModal] = useState(false);
+  // 快捷键 shortcut keys
+  const [showShortcutKeyModal, setShowShortcutKeyModal] = useState(false);
+  const [showChatSidePanel, setShowChatSidePanel] = useState(false);
+  const [showPromptModal, setShowPromptModal] = useState(false);
+
   const isMobileScreen = useMobileScreen();
   const navigate = useNavigate();
   const [attachImages, setAttachImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const { submitKey, shouldSubmit } = useSubmitHandler();
+
+  // preview messages
+  const renderMessages = useMemo(() => {
+    return context
+      .concat(session.messages as RenderMessage[])
+      .concat(
+        isLoading
+          ? [
+              {
+                ...createMessage({
+                  role: "assistant",
+                  content: "……",
+                }),
+                preview: true,
+              },
+            ]
+          : [],
+      )
+      .concat(
+        userInput.length > 0 && config.sendPreviewBubble
+          ? [
+              {
+                ...createMessage({
+                  role: "user",
+                  content: userInput,
+                }),
+                preview: true,
+              },
+            ]
+          : [],
+      );
+  }, [
+    config.sendPreviewBubble,
+    context,
+    isLoading,
+    session.messages,
+    userInput,
+  ]);
+
+  const [msgRenderIndex, _setMsgRenderIndex] = useState(
+    Math.max(0, renderMessages.length - CHAT_PAGE_SIZE),
+  );
+
+  function setMsgRenderIndex(newIndex: number) {
+    newIndex = Math.min(renderMessages.length - CHAT_PAGE_SIZE, newIndex);
+    newIndex = Math.max(0, newIndex);
+    _setMsgRenderIndex(newIndex);
+  }
+  const onChatBodyScroll = (e: HTMLElement) => {
+    const bottomHeight = e.scrollTop + e.clientHeight;
+    const edgeThreshold = e.clientHeight;
+
+    const isTouchTopEdge = e.scrollTop <= edgeThreshold;
+    const isTouchBottomEdge = bottomHeight >= e.scrollHeight - edgeThreshold;
+    const isHitBottom =
+      bottomHeight >= e.scrollHeight - (isMobileScreen ? 4 : 10);
+
+    const prevPageMsgIndex = msgRenderIndex - CHAT_PAGE_SIZE;
+    const nextPageMsgIndex = msgRenderIndex + CHAT_PAGE_SIZE;
+
+    if (isTouchTopEdge && !isTouchBottomEdge) {
+      setMsgRenderIndex(prevPageMsgIndex);
+    } else if (isTouchBottomEdge) {
+      setMsgRenderIndex(nextPageMsgIndex);
+    }
+
+    setHitBottom(isHitBottom);
+    setAutoScroll(isHitBottom);
+  };
+
+  function scrollToBottom() {
+    setMsgRenderIndex(renderMessages.length - CHAT_PAGE_SIZE);
+    scrollDomToBottom();
+  }
+
+  async function uploadImage() {
+    const images: string[] = [];
+    images.push(...attachImages);
+
+    images.push(
+      ...(await new Promise<string[]>((res, rej) => {
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.accept =
+          "image/png, image/jpeg, image/webp, image/heic, image/heif";
+        fileInput.multiple = true;
+        fileInput.onchange = (event: any) => {
+          setUploading(true);
+          const files = event.target.files;
+          const imagesData: string[] = [];
+          for (let i = 0; i < files.length; i++) {
+            const file = event.target.files[i];
+            uploadImageRemote(file)
+              .then((dataUrl) => {
+                imagesData.push(dataUrl);
+                if (
+                  imagesData.length === 3 ||
+                  imagesData.length === files.length
+                ) {
+                  setUploading(false);
+                  res(imagesData);
+                }
+              })
+              .catch((e) => {
+                setUploading(false);
+                rej(e);
+              });
+          }
+        };
+        fileInput.click();
+      })),
+    );
+
+    const imagesLength = images.length;
+    if (imagesLength > 3) {
+      images.splice(3, imagesLength - 3);
+    }
+    setAttachImages(images);
+  }
+
+  const handlePaste = useCallback(
+    async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const currentModel =
+        chatBodyStore.currentSession().mask.modelConfig.model;
+      if (!isVisionModel(currentModel)) {
+        return;
+      }
+      const items = (event.clipboardData || window.clipboardData).items;
+      for (const item of items) {
+        if (item.kind === "file" && item.type.startsWith("image/")) {
+          event.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            const images: string[] = [];
+            images.push(...attachImages);
+            images.push(
+              ...(await new Promise<string[]>((res, rej) => {
+                setUploading(true);
+                const imagesData: string[] = [];
+                uploadImageRemote(file)
+                  .then((dataUrl) => {
+                    imagesData.push(dataUrl);
+                    setUploading(false);
+                    res(imagesData);
+                  })
+                  .catch((e) => {
+                    setUploading(false);
+                    rej(e);
+                  });
+              })),
+            );
+            const imagesLength = images.length;
+
+            if (imagesLength > 3) {
+              images.splice(3, imagesLength - 3);
+            }
+            setAttachImages(images);
+          }
+        }
+      }
+    },
+    [attachImages, chatBodyStore],
+  );
+
+  // 文本选择
   const [selectedRange, setSelectedRange] = useState<Range | null>(null);
   const [selectedText, setSelectedText] = useState("");
   const [showTextSelectionToolbar, setShowTextSelectionToolbar] =
@@ -191,6 +342,38 @@ export function ChatBody(props: ChatBodyProps) {
     };
   }, [handleTextSelection]);
 
+  // prompt hints
+  const promptStore = usePromptStore();
+  const [promptHints, setPromptHints] = useState<RenderPrompt[]>([]);
+  const onSearch = useDebouncedCallback(
+    (text: string) => {
+      const matchedPrompts = promptStore.search(text);
+      setPromptHints(matchedPrompts);
+    },
+    100,
+    { leading: true, trailing: true },
+  );
+
+  // only search prompts when user input is short
+  const SEARCH_TEXT_LIMIT = 30;
+  const onInput = (text: string) => {
+    setUserInput(text);
+    const n = text.trim().length;
+
+    // clear search results
+    if (n === 0) {
+      setPromptHints([]);
+    } else if (text.match(ChatCommandPrefix)) {
+      setPromptHints(chatCommands.search(text));
+    } else if (!config.disablePromptHint && n < SEARCH_TEXT_LIMIT) {
+      // check if need to trigger auto completion
+      if (text.startsWith("/")) {
+        let searchText = text.slice(1);
+        onSearch(searchText);
+      }
+    }
+  };
+
   const doSubmit = (input: string) => {
     if (input.trim() === "" && isEmpty(attachImages)) return;
     const matchCommand = chatCommands.match(input);
@@ -201,13 +384,138 @@ export function ChatBody(props: ChatBodyProps) {
       return;
     }
     setIsLoading(true);
-    chatStore.onUserInput(input, attachImages).then(() => setIsLoading(false));
+    chatBodyStore
+      .onUserInput(input, attachImages)
+      .then(() => setIsLoading(false));
     setAttachImages([]);
-    chatStore.setLastInput(input);
+    chatBodyStore.setLastInput(input);
     setUserInput("");
     setPromptHints([]);
     if (!isMobileScreen) inputRef.current?.focus();
     setAutoScroll(true);
+  };
+
+  const onPromptSelect = (prompt: RenderPrompt) => {
+    setTimeout(() => {
+      setPromptHints([]);
+
+      const matchedChatCommand = chatCommands.match(prompt.content);
+      if (matchedChatCommand.matched) {
+        // if user is selecting a chat command, just trigger it
+        matchedChatCommand.invoke();
+        setUserInput("");
+      } else {
+        // or fill the prompt
+        setUserInput(prompt.content);
+      }
+      inputRef.current?.focus();
+    }, 30);
+  };
+
+  // stop response
+  const onUserStop = (messageId: string) => {
+    ChatControllerPool.stop(session.id, messageId);
+  };
+
+  // check if should send message
+  const onInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // if ArrowUp and no userInput, fill with last input
+    if (
+      e.key === "ArrowUp" &&
+      userInput.length <= 0 &&
+      !(e.metaKey || e.altKey || e.ctrlKey)
+    ) {
+      setUserInput(chatBodyStore.lastInput ?? "");
+      e.preventDefault();
+      return;
+    }
+    if (shouldSubmit(e) && promptHints.length === 0) {
+      doSubmit(userInput);
+      e.preventDefault();
+    }
+  };
+
+  const deleteMessage = (msgId?: string) => {
+    chatBodyStore.updateTargetSession(
+      session,
+      (session) =>
+        (session.messages = session.messages.filter((m) => m.id !== msgId)),
+    );
+  };
+
+  const onDelete = (msgId: string) => {
+    deleteMessage(msgId);
+  };
+
+  const onResend = (message: ChatMessage) => {
+    // when it is resending a message
+    // 1. for a user's message, find the next bot response
+    // 2. for a bot's message, find the last user's input
+    // 3. delete original user input and bot's message
+    // 4. resend the user's input
+
+    const resendingIndex = session.messages.findIndex(
+      (m) => m.id === message.id,
+    );
+
+    if (resendingIndex < 0 || resendingIndex >= session.messages.length) {
+      console.error("[Chat] failed to find resending message", message);
+      return;
+    }
+
+    let userMessage: ChatMessage | undefined;
+    let botMessage: ChatMessage | undefined;
+
+    if (message.role === "assistant") {
+      // if it is resending a bot's message, find the user input for it
+      botMessage = message;
+      for (let i = resendingIndex; i >= 0; i -= 1) {
+        if (session.messages[i].role === "user") {
+          userMessage = session.messages[i];
+          break;
+        }
+      }
+    } else if (message.role === "user") {
+      // if it is resending a user's input, find the bot's response
+      userMessage = message;
+      for (let i = resendingIndex; i < session.messages.length; i += 1) {
+        if (session.messages[i].role === "assistant") {
+          botMessage = session.messages[i];
+          break;
+        }
+      }
+    }
+
+    if (userMessage === undefined) {
+      console.error("[Chat] failed to resend", message);
+      return;
+    }
+
+    // delete the original messages
+    deleteMessage(userMessage.id);
+    deleteMessage(botMessage?.id);
+
+    // resend the message
+    setIsLoading(true);
+    const textContent = getMessageTextContent(userMessage);
+    const images = getMessageImages(userMessage);
+    chatBodyStore
+      .onUserInput(textContent, images)
+      .then(() => setIsLoading(false));
+    inputRef.current?.focus();
+  };
+
+  const onPinMessage = (message: ChatMessage) => {
+    chatBodyStore.updateTargetSession(session, (session) =>
+      session.mask.context.push(message),
+    );
+
+    showToast(Locale.Chat.Actions.PinToastContent, {
+      text: Locale.Chat.Actions.PinToastAction,
+      onClick: () => {
+        setShowPromptModal(true);
+      },
+    });
   };
 
   return (
@@ -290,7 +598,7 @@ export function ChatBody(props: ChatBodyProps) {
                                   });
                                 }
                               }
-                              chatStore.updateTargetSession(
+                              chatBodyStore.updateTargetSession(
                                 session,
                                 (session) => {
                                   const m = session.mask.context

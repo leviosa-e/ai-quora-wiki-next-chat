@@ -263,7 +263,7 @@ function PromptToast(props: {
   );
 }
 
-function useSubmitHandler() {
+export function useSubmitHandler() {
   const config = useAppConfig();
   const submitKey = config.submitKey;
   const isComposing = useRef(false);
@@ -989,9 +989,8 @@ export function ShortcutKeyModal(props: { onClose: () => void }) {
   );
 }
 
+export type RenderMessage = ChatMessage & { preview?: boolean };
 function _Chat() {
-  type RenderMessage = ChatMessage & { preview?: boolean };
-
   const chatStore = useChatStore();
   const session = chatStore.currentSession();
   const config = useAppConfig();
